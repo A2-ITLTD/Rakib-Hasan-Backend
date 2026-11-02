@@ -1,0 +1,269 @@
+const cloudinary = require("cloudinary").v2;
+const multer = require("multer");
+
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (
+      file.mimetype.startsWith("image/") ||
+      file.mimetype === "application/pdf"
+    ) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only image or PDF files are allowed"));
+    }
+  },
+});
+
+const CLOUDINARY_FOLDERS = {
+  blogs: "a2it/blog/images",
+  portfolio: "a2it/portfolio",
+  services: "a2it/services",
+  users: "a2it/users",
+  clients: "a2it/clients",
+  gallery: "a2it/gallery",
+  banners: "a2it/banners",
+  "footer-logo": "a2it/footer/logo",
+  "footer-top-band": "a2it/footer/top-band",
+  news: "a2it/news",
+  general: "a2it/general",
+  "site-logo": "a2it/site/logo",
+  favicon: "a2it/site/favicon",
+  spotlight: "a2it/spotlight",
+  "join-us": "a2it/join-us",
+  about: "a2it/about",
+  "government-enlistment": "a2it/government-enlistment",
+  "government-enlistment-certificate": "a2it/government-enlistment/certificates",
+  "projects-page": "a2it/projects-page",
+  csr: "a2it/csr",
+};
+
+const uploadToCloudinary = (fileBuffer, folder) => {
+  return new Promise((resolve, reject) => {
+    const uploadStream = cloudinary.uploader.upload_stream(
+      {
+        folder,
+        resource_type: "auto",
+        quality: "auto",
+        fetch_format: "auto",
+      },
+      (error, result) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve(result);
+      },
+    );
+
+    uploadStream.end(fileBuffer);
+  });
+};
+
+const ensureFile = (req, res) => {
+  if (!req.file) {
+    res.status(400).json({ success: false, error: "No image provided" });
+    return false;
+  }
+  return true;
+};
+
+const uploadImageByType = async (req, res) => {
+  try {
+    if (!ensureFile(req, res)) return;
+
+    const uploadType = req.params.type?.toLowerCase() || "general";
+    const folder = CLOUDINARY_FOLDERS[uploadType] || CLOUDINARY_FOLDERS.general;
+    const result = await uploadToCloudinary(req.file.buffer, folder);
+
+    return res.json({
+      success: true,
+      url: result.secure_url,
+      publicId: result.public_id,
+      folder,
+    });
+  } catch (error) {
+    console.error("Cloudinary upload error:", error);
+    return res.status(500).json({ success: false, error: "Upload failed" });
+  }
+};
+
+const uploadToFixedFolder = (folderKey, errorLabel) => {
+  return async (req, res) => {
+    try {
+      if (!ensureFile(req, res)) return;
+
+      const result = await uploadToCloudinary(
+        req.file.buffer,
+        CLOUDINARY_FOLDERS[folderKey],
+      );
+
+      return res.json({
+        success: true,
+        url: result.secure_url,
+        publicId: result.public_id,
+        folder: CLOUDINARY_FOLDERS[folderKey],
+      });
+    } catch (error) {
+      console.error(`Error uploading ${errorLabel} image:`, error);
+      return res.status(500).json({ success: false, error: "Server error" });
+    }
+  };
+};
+
+const uploadBlogImage = uploadToFixedFolder("blogs", "blog");
+const uploadPortfolioImage = uploadToFixedFolder("portfolio", "portfolio");
+const uploadServiceImage = uploadToFixedFolder("services", "service");
+const uploadClientLogoImage = uploadToFixedFolder("clients", "client logo");
+const uploadGalleryImage = uploadToFixedFolder("gallery", "gallery");
+const uploadBannerImage = uploadToFixedFolder("banners", "banner");
+const uploadFooterLogoImage = uploadToFixedFolder("footer-logo", "footer logo");
+const uploadFooterTopBandImage = uploadToFixedFolder(
+  "footer-top-band",
+  "footer top band",
+);
+const uploadNewsImage = uploadToFixedFolder("news", "news");
+const uploadSiteLogoImage = uploadToFixedFolder("site-logo", "site logo");
+const uploadFaviconImage = uploadToFixedFolder("favicon", "favicon");
+const uploadSpotlightImage = uploadToFixedFolder("spotlight", "spotlight");
+const uploadJoinUsImage = uploadToFixedFolder("join-us", "join us");
+const uploadAboutImage = uploadToFixedFolder("about", "about");
+const uploadGovernmentEnlistmentImage = uploadToFixedFolder(
+  "government-enlistment",
+  "government enlistment",
+);
+const uploadGovernmentEnlistmentCertificate = uploadToFixedFolder(
+  "government-enlistment-certificate",
+  "government enlistment certificate",
+);
+const uploadProjectsPageImage = uploadToFixedFolder(
+  "projects-page",
+  "projects page",
+);
+const uploadCSRImage = uploadToFixedFolder("csr", "CSR");
+
+const listPortfolioResources = async (req, res) => {
+  try {
+    const prefix = CLOUDINARY_FOLDERS.portfolio;
+    const resources = await cloudinary.api.resources({
+      type: "upload",
+      prefix,
+      max_results: 200,
+    });
+
+    return res.json({ success: true, resources: resources.resources });
+  } catch (error) {
+    console.error("Error listing Cloudinary resources:", error);
+    return res
+      .status(500)
+      .json({ success: false, error: "Failed to list resources" });
+  }
+};
+
+const listMediaResources = async (req, res) => {
+  try {
+    const folder = String(req.query.folder || "").trim();
+    const prefix = folder || "a2it/";
+
+    const fetchResources = async (resourceType) => {
+      const result = await cloudinary.api.resources({
+        type: "upload",
+        resource_type: resourceType,
+        prefix,
+        max_results: 500,
+      });
+
+      return result.resources || [];
+    };
+
+    let resources = [];
+
+    if (prefix.startsWith("a2it/blog")) {
+      const [images, videos] = await Promise.all([
+        fetchResources("image"),
+        fetchResources("video"),
+      ]);
+
+      resources = [...images, ...videos].sort((a, b) => {
+        const aTime = new Date(a.created_at || 0).getTime();
+        const bTime = new Date(b.created_at || 0).getTime();
+        return bTime - aTime;
+      });
+    } else {
+      resources = await fetchResources("image");
+    }
+
+    return res.json({
+      success: true,
+      resources,
+      items: resources,
+      next_cursor: null,
+    });
+  } catch (error) {
+    console.error("Error listing media resources:", error);
+    return res
+      .status(500)
+      .json({ success: false, error: "Failed to list media resources" });
+  }
+};
+
+const deletePortfolioResource = async (req, res) => {
+  try {
+    const publicId = String(req.query.publicId || "").trim();
+
+    if (!publicId) {
+      return res.status(400).json({
+        success: false,
+        error: "publicId is required",
+      });
+    }
+
+    const result = await cloudinary.uploader.destroy(publicId, {
+      resource_type: "image",
+    });
+
+    return res.json({
+      success: true,
+      result,
+    });
+  } catch (error) {
+    console.error("Error deleting Cloudinary resource:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Failed to delete resource",
+    });
+  }
+};
+
+module.exports = {
+  upload,
+  uploadImageByType,
+  uploadBlogImage,
+  uploadPortfolioImage,
+  uploadServiceImage,
+  uploadClientLogoImage,
+  uploadGalleryImage,
+  uploadBannerImage,
+  uploadFooterLogoImage,
+  uploadFooterTopBandImage,
+  uploadNewsImage,
+  uploadSiteLogoImage,
+  uploadFaviconImage,
+  uploadSpotlightImage,
+  uploadJoinUsImage,
+  uploadAboutImage,
+  uploadGovernmentEnlistmentImage,
+  uploadGovernmentEnlistmentCertificate,
+  uploadProjectsPageImage,
+  uploadCSRImage,
+  listPortfolioResources,
+  listMediaResources,
+  deletePortfolioResource,
+};

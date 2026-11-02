@@ -1,0 +1,25 @@
+const MODULE_KEYS = [
+  "banner",
+  "spotlight",
+  "join-us",
+  "job-opportunities",
+  "client-showcase",
+  "smart-features",
+  "about",
+  "government-enlistment",
+  "csr",
+  "projects-page",
+  "contact-page",
+  "legal-pages",
+  "services",
+  "portfolio",
+  "gallery",
+  "blog",
+  "news",
+  "site-branding",
+  "navbar-menu",
+  "footer",
+  "media",
+];
+
+module.exports = { MODULE_KEYS };
